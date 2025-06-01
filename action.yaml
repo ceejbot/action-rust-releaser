@@ -1,0 +1,107 @@
+name: "rust-releaser"
+description: Release a Rust project to a personal homebrew tap.
+
+inputs:
+    executable:
+        description: the name of the tool when installed
+        required: true
+    refname:
+        description: the refname for the release being created
+        required: true
+    tap_repo:
+        description: the tap repo, specified in owner/repo form
+        required: true
+        default: "ceejbot/homebrew-tap"
+    tap_email:
+        description: the email to use for the commit into the tap repo
+        required: true
+        default: "ceejceej@gmail.com"
+    tap_user:
+        description: the user name to use for the commit into the tap repo
+        required: true
+        default: "formula robot"
+
+runs:
+    using: composite
+    steps:
+        - name: check out the repo
+          uses: actions/checkout@v4
+
+        - name: get stable + nightly Rust
+          uses: actions-rust-lang/setup-rust-toolchain@v1
+          with:
+              toolchain: nightly, stable
+              components: clippy, rustfmt
+              target: x86_64-apple-darwin
+              cache-directories: |
+                  ~/.cargo/registry
+                  ~/.cargo/bin
+                  target
+
+        - name: get cargo-nextest on path
+          shell: bash
+          run: |
+              if [[ -z $(which cargo-nextest) ]]; then
+                curl -sL https://get.nexte.st/latest/linux -o nextest.tgz
+                tar xfz nextest.tgz
+                mv cargo-nextest ~/.cargo/bin
+                rm nextest.tgz
+              fi
+
+        - name: run the tests
+          shell: bash
+          run: cargo +stable nextest run --no-tests warn
+
+        - name: consult Clippy
+          shell: bash
+          run: cargo +stable clippy --all-targets
+
+        - name: check formatting
+          shell: bash
+          run: cargo +nightly fmt --check --all
+
+        - name: get formulaic on path
+          shell: bash
+          run: |
+              if [[ -z $(which formulaic) ]]; then
+                  gh release download --repo ceejbot/formulaic --pattern \*aarch64-apple-darwin.tar.gz -O formulaic.tgz
+                  tar xfz formulaic.tgz
+                  mv formulaic ~/.cargo/bin
+                  rm formulaic.tgz
+              fi
+
+        - name: create github release
+          shell: bash
+          run: gh release create "${{ inputs.refname }}" --generate-notes
+
+        - name: create and upload release assets
+          env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          shell: bash
+          run: |
+              	mkdir -p dist
+              	cd dist
+              	for target in "aarch64-apple-darwin" "x86_64-apple-darwin"; do
+                   cargo +stable build --release --target $target
+
+                   tar czf ${{ inputs.executable }}-$target.tar.gz --strip-components=4  ../target/$target/release/${{ inputs.executable }}
+                   gh release upload "${{ inputs.refname }}" "${{ inputs.executable }}-$target.tar.gz"
+
+                   sha256sum ${{ inputs.executable }}-$target.tar.gz > ${{ inputs.executable }}-"$target".tar.gz.sha256
+                   gh release upload "${{ inputs.refname }}" "${{ inputs.executable }}-$target.tar.gz.sha256"
+              	done
+              	formula_file=$(formulaic ../Cargo.toml)
+
+        - name: update the homebrew tap
+          env:
+              GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          shell: bash
+          run: |
+              gh repo clone ${{ inputs.tap_repo }}
+              cd ${{ inputs.tap_repo }} || exit 1
+              cp ../${{ inputs.executable }}.rb Formula/
+              git add Formula/${{ inputs.executable }}.rb
+              git config user.name "${{ inputs.tap_user }}"
+              git config user.email "${{ inputs.tap_email }}"
+              git commit -m "${{ inputs.executable }} ${{ inputs.refname }}"
+              git push https://x-access-token:${{ secrets.HOMEBREW_TAP_TOKEN }}@github.com/${{ inputs.tap_repo }}.git
