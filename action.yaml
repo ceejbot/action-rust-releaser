@@ -76,7 +76,7 @@ runs:
 
         - name: create and upload release assets
           env:
-              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              GH_TOKEN: ${{ env.TOOL_REPO_TOKEN }}
           shell: bash
           run: |
               	mkdir -p dist
@@ -94,7 +94,7 @@ runs:
 
         - name: update the homebrew tap
           env:
-              GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+              GH_TOKEN: ${{ env.HOMEBREW_TAP_TOKEN }}
           shell: bash
           run: |
               gh repo clone ${{ inputs.tap_repo }}
@@ -104,4 +104,4 @@ runs:
               git config user.name "${{ inputs.tap_user }}"
               git config user.email "${{ inputs.tap_email }}"
               git commit -m "${{ inputs.executable }} ${{ inputs.refname }}"
-              git push https://x-access-token:${{ secrets.HOMEBREW_TAP_TOKEN }}@github.com/${{ inputs.tap_repo }}.git
+              git push https://x-access-token:${{ env.GH_TOKEN }}@github.com/${{ inputs.tap_repo }}.git
