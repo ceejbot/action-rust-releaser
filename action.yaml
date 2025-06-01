@@ -20,6 +20,9 @@ inputs:
         description: the user name to use for the commit into the tap repo
         required: true
         default: "formula robot"
+    tap_token:
+        description: a gh token with write access to the homebrew tap repo
+        required: true
 
 runs:
     using: composite
@@ -32,7 +35,7 @@ runs:
           with:
               toolchain: nightly, stable
               components: clippy, rustfmt
-              target: x86_64-apple-darwin
+              target: aarch64-apple-darwin, x86_64-apple-darwin
               cache-directories: |
                   ~/.cargo/registry
                   ~/.cargo/bin
@@ -42,7 +45,7 @@ runs:
           shell: bash
           run: |
               if [[ -z $(which cargo-nextest) ]]; then
-                curl -sL https://get.nexte.st/latest/linux -o nextest.tgz
+                curl -sL https://get.nexte.st/latest/mac -o nextest.tgz
                 tar xfz nextest.tgz
                 mv cargo-nextest ~/.cargo/bin
                 rm nextest.tgz
@@ -62,6 +65,8 @@ runs:
 
         - name: get formulaic on path
           shell: bash
+          env:
+              GH_TOKEN: ${{ env.REPO_TOKEN }}
           run: |
               if [[ -z $(which formulaic) ]]; then
                   gh release download --repo ceejbot/formulaic --pattern \*aarch64-apple-darwin.tar.gz -O formulaic.tgz
@@ -72,36 +77,48 @@ runs:
 
         - name: create github release
           shell: bash
-          run: gh release create "${{ inputs.refname }}" --generate-notes
+          env:
+              REFNAME: ${{ inputs.refname }}
+              GH_TOKEN: ${{ env.REPO_TOKEN }}
+          run: gh release create "$REFNAME" --generate-notes
 
         - name: create and upload release assets
           env:
-              GH_TOKEN: ${{ env.TOOL_REPO_TOKEN }}
+              GH_TOKEN: ${{ env.REPO_TOKEN }}
+              GITHUB_ACCESS_TOKEN: ${{ env.REPO_TOKEN}}
+              EXECUTABLE: ${{ inputs.executable }}
+              REFNAME: ${{ inputs.refname }}
           shell: bash
           run: |
-              	mkdir -p dist
-              	cd dist
-              	for target in "aarch64-apple-darwin" "x86_64-apple-darwin"; do
-                   cargo +stable build --release --target $target
+              mkdir -p dist
+              cd dist
+              for target in "aarch64-apple-darwin" "x86_64-apple-darwin"; do
+                  cargo +stable build --release --target $target
 
-                   tar czf ${{ inputs.executable }}-$target.tar.gz --strip-components=4  ../target/$target/release/${{ inputs.executable }}
-                   gh release upload "${{ inputs.refname }}" "${{ inputs.executable }}-$target.tar.gz"
+                  tar czf $EXECUTABLE-$target.tar.gz --strip-components=4  ../target/$target/release/$EXECUTABLE
+                  gh release upload "$REFNAME" "$EXECUTABLE-$target.tar.gz"
 
-                   sha256sum ${{ inputs.executable }}-$target.tar.gz > ${{ inputs.executable }}-"$target".tar.gz.sha256
-                   gh release upload "${{ inputs.refname }}" "${{ inputs.executable }}-$target.tar.gz.sha256"
-              	done
-              	formula_file=$(formulaic ../Cargo.toml)
+                  digest=$(shasum -a 256 $EXECUTABLE-$target.tar.gz)
+                  shasum=$(echo $digest | { read first rest; echo $first; } )
+                  echo $shasum > $EXECUTABLE-"$target".tar.gz.sha256
+                  gh release upload "$REFNAME" "$EXECUTABLE-$target.tar.gz.sha256"
+              done
+              formula_file=$(formulaic ../Cargo.toml)
 
         - name: update the homebrew tap
           env:
+              EXECUTABLE: ${{ inputs.executable }}
+              REFNAME: ${{ inputs.refname }}
+              TAP_REPO: ${{ inputs.tap_repo }}
+              TAP_USER: ${{ inputs.tap_user }}
               GH_TOKEN: ${{ env.HOMEBREW_TAP_TOKEN }}
           shell: bash
           run: |
-              gh repo clone ${{ inputs.tap_repo }}
-              cd ${{ inputs.tap_repo }} || exit 1
-              cp ../${{ inputs.executable }}.rb Formula/
-              git add Formula/${{ inputs.executable }}.rb
-              git config user.name "${{ inputs.tap_user }}"
-              git config user.email "${{ inputs.tap_email }}"
-              git commit -m "${{ inputs.executable }} ${{ inputs.refname }}"
-              git push https://x-access-token:${{ env.GH_TOKEN }}@github.com/${{ inputs.tap_repo }}.git
+              gh repo clone $TAP_REPO
+              cd ${TAP_REPO##*/} || exit 1
+              cp ../$EXECUTABLE.rb Formula/
+              git add Formula/$EXECUTABLE.rb
+              git config user.name "$TAP_REPO"
+              git config user.email "$TAP_USER"
+              git commit -m "$EXECUTABLE $REFNAME"
+              git push https://x-access-token:$GH_TOKEN@github.com/$TAP_REPO.git
