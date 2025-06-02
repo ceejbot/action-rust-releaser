@@ -8,18 +8,27 @@ Usage:
 jobs:
     release:
         name: release
-        runs-on: ubuntu-latest
+        runs-on: macos-latest
         steps:
-            - uses: ceejbot/actions-rust-releaser@v1
+            - uses: ceejbot/action-rust-releaser@89c36c63bd61c664ce79597d9f8c2f9e22b0bcaa
+              env:
+                  HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+                  REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               with:
                   executable: codefact
                   refname: ${{ github.ref_name }}
                   tap_repo: ceejbot/homebrew-tap
-                  tap_email: robot@example.com
+                  tap_email: ceejceej@gmail.com
                   tap_user: "🍺🤖"
 ```
 
-You should pin to the full-length hash for the most recent commit when you start using this action. This is the safest way to know what code you're running.
+If you use this action, inspect the code, then pin to the full-length hash for the commit you inspected. This is the best way to know what code you're running and that nothing hinky is happening with your secrets.
+
+## Limitations
+
+- At the moment this only builds for Mac ARM & Intel targets. It should build for different sets of targets depending on what host OS it's running on.
+- It only knows how to build release assets for a single bin in a crate, while of course there might be more than one.
+- It's unsuitable for libraries.
 
 ## LICENSE
 
