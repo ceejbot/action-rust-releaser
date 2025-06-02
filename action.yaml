@@ -11,18 +11,13 @@ inputs:
     tap_repo:
         description: the tap repo, specified in owner/repo form
         required: true
-        default: "ceejbot/homebrew-tap"
     tap_email:
         description: the email to use for the commit into the tap repo
         required: true
-        default: "ceejceej@gmail.com"
     tap_user:
         description: the user name to use for the commit into the tap repo
         required: true
         default: "formula robot"
-    tap_token:
-        description: a gh token with write access to the homebrew tap repo
-        required: true
 
 runs:
     using: composite
@@ -104,6 +99,8 @@ runs:
                   gh release upload "$REFNAME" "$EXECUTABLE-$target.tar.gz.sha256"
               done
               formula_file=$(formulaic ../Cargo.toml)
+              echo "Formula file generated in $formula_file"
+              pwd
 
         - name: update the homebrew tap
           env:
@@ -116,7 +113,7 @@ runs:
           run: |
               gh repo clone $TAP_REPO
               cd ${TAP_REPO##*/} || exit 1
-              cp ../$EXECUTABLE.rb Formula/
+              cp ../dist/$EXECUTABLE.rb Formula/
               git add Formula/$EXECUTABLE.rb
               git config user.name "$TAP_REPO"
               git config user.email "$TAP_USER"
