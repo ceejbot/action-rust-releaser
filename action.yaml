@@ -25,12 +25,22 @@ runs:
         - name: check out the repo
           uses: actions/checkout@v4
 
+        - name: set target list for linux
+          if: runner.os == 'Linux'
+          shell: bash
+          run: echo "TARGET_LIST='x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu'" >> "$GITHUB_ENV"
+
+        - name: set target list for macos
+          if: runner.os == 'macOS'
+          shell: bash
+          run: echo "TARGET_LIST='aarch64-apple-darwin, x86_64-apple-darwin'" >> "$GITHUB_ENV"
+
         - name: get stable + nightly Rust
           uses: actions-rust-lang/setup-rust-toolchain@v1
           with:
               toolchain: nightly, stable
               components: clippy, rustfmt
-              target: aarch64-apple-darwin, x86_64-apple-darwin
+              target: ${{ env.TARGET_LIST }}
               cache-directories: |
                   ~/.cargo/registry
                   ~/.cargo/bin
@@ -40,7 +50,11 @@ runs:
           shell: bash
           run: |
               if [[ -z $(which cargo-nextest) ]]; then
-                curl -sL https://get.nexte.st/latest/mac -o nextest.tgz
+                if [[ ${{runner.os == "macOs" }} ]]; then
+                    curl -sL https://get.nexte.st/latest/mac -o nextest.tgz
+                else
+                    curl -sL https://get.nexte.st/latest/linux -o nextest.tgz
+                fi
                 tar xfz nextest.tgz
                 mv cargo-nextest ~/.cargo/bin
                 rm nextest.tgz
@@ -64,6 +78,7 @@ runs:
               GH_TOKEN: ${{ env.REPO_TOKEN }}
           run: |
               if [[ -z $(which formulaic) ]]; then
+                  # todo build formulaic for linux and then download that
                   gh release download --repo ceejbot/formulaic --pattern \*aarch64-apple-darwin.tar.gz -O formulaic.tgz
                   tar xfz formulaic.tgz
                   mv formulaic ~/.cargo/bin
